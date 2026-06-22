@@ -2,8 +2,9 @@ const express = require("express");
 const cors = require("cors");
 const dotenv = require("dotenv");
 const crypto = require("crypto");
+const { query, checkDatabase, closeDatabase } = require("./db");
 
-dotenv.config({quiet: true});
+dotenv.config({ quiet: true });
 
 const app = express();
 
@@ -15,8 +16,6 @@ const NODE_ENV = process.env.NODE_ENV || "development";
 app.use(cors());
 app.use(express.json());
 
-const incidents = [];
-
 function log(level, message, meta = {}) {
   const logEntry = {
     timestamp: new Date().toISOString(),
@@ -27,6 +26,19 @@ function log(level, message, meta = {}) {
   };
 
   console.log(JSON.stringify(logEntry));
+}
+
+function mapIncident(row) {
+  return {
+    id: row.id,
+    title: row.title,
+    severity: row.severity,
+    serviceName: row.service_name,
+    description: row.description,
+    status: row.status,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
 }
 
 app.use((req, res, next) => {
@@ -68,17 +80,39 @@ app.get("/health", (req, res) => {
   });
 });
 
-app.get("/ready", (req, res) => {
-  res.status(200).json({
-    status: "ready",
-    service: SERVICE_NAME,
-    dependencies: {
-      database: "not_configured_in_task_2",
-      redis: "not_configured_in_task_2",
-      aiAnalyzer: "not_configured_in_task_2",
-    },
-    timestamp: new Date().toISOString(),
-  });
+app.get("/ready", async (req, res) => {
+  try {
+    const database = await checkDatabase();
+
+    res.status(200).json({
+      status: "ready",
+      service: SERVICE_NAME,
+      dependencies: {
+        database,
+        redis: "not_configured_in_task_3",
+        aiAnalyzer: "not_configured_in_task_3",
+      },
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    log("error", "Readiness check failed", {
+      requestId: req.requestId,
+      dependency: "database",
+      errorMessage: error.message,
+    });
+
+    res.status(503).json({
+      status: "not_ready",
+      service: SERVICE_NAME,
+      dependencies: {
+        database: {
+          status: "disconnected",
+          error: error.message,
+        },
+      },
+      timestamp: new Date().toISOString(),
+    });
+  }
 });
 
 app.get("/version", (req, res) => {
@@ -90,56 +124,77 @@ app.get("/version", (req, res) => {
   });
 });
 
-app.get("/api/incidents", (req, res) => {
-  res.json({
-    count: incidents.length,
-    data: incidents,
-  });
+app.get("/api/incidents", async (req, res, next) => {
+  try {
+    const result = await query(
+      `SELECT id, title, severity, service_name, description, status, created_at, updated_at
+       FROM incidents
+       ORDER BY created_at DESC`
+    );
+
+    res.json({
+      count: result.rows.length,
+      data: result.rows.map(mapIncident),
+    });
+  } catch (error) {
+    next(error);
+  }
 });
 
-app.post("/api/incidents", (req, res) => {
-  const { title, severity, serviceName, description } = req.body;
+app.post("/api/incidents", async (req, res, next) => {
+  try {
+    const { title, severity, serviceName, description } = req.body;
 
-  if (!title || !severity || !serviceName) {
-    return res.status(400).json({
-      error: "Validation failed",
-      message: "title, severity, and serviceName are required",
+    if (!title || !severity || !serviceName) {
+      return res.status(400).json({
+        error: "Validation failed",
+        message: "title, severity, and serviceName are required",
+      });
+    }
+
+    const incidentId = crypto.randomUUID();
+
+    const result = await query(
+      `INSERT INTO incidents (id, title, severity, service_name, description, status)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING id, title, severity, service_name, description, status, created_at, updated_at`,
+      [incidentId, title, severity, serviceName, description || "", "open"]
+    );
+
+    const incident = mapIncident(result.rows[0]);
+
+    log("warn", "New incident created", {
+      incidentId: incident.id,
+      severity: incident.severity,
+      affectedService: incident.serviceName,
     });
+
+    res.status(201).json(incident);
+  } catch (error) {
+    next(error);
   }
-
-  const incident = {
-    id: crypto.randomUUID(),
-    title,
-    severity,
-    serviceName,
-    description: description || "",
-    status: "open",
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  };
-
-  incidents.push(incident);
-
-  log("warn", "New incident created", {
-    incidentId: incident.id,
-    severity: incident.severity,
-    affectedService: incident.serviceName,
-  });
-
-  res.status(201).json(incident);
 });
 
-app.get("/api/incidents/:id", (req, res) => {
-  const incident = incidents.find((item) => item.id === req.params.id);
+app.get("/api/incidents/:id", async (req, res, next) => {
+  try {
+    const result = await query(
+      `SELECT id, title, severity, service_name, description, status, created_at, updated_at
+       FROM incidents
+       WHERE id = $1`,
+      [req.params.id]
+    );
 
-  if (!incident) {
-    return res.status(404).json({
-      error: "Incident not found",
-      incidentId: req.params.id,
-    });
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        error: "Incident not found",
+        incidentId: req.params.id,
+      });
+    }
+
+    res.json(mapIncident(result.rows[0]));
+  } catch (error) {
+    next(error);
   }
-
-  res.json(incident);
 });
 
 app.get("/simulate/error", (req, res) => {
@@ -197,18 +252,23 @@ const server = app.listen(PORT, "0.0.0.0", () => {
   });
 });
 
-process.on("SIGTERM", () => {
-  log("info", "SIGTERM received. Shutting down gracefully.");
-  server.close(() => {
-    log("info", "Server closed.");
-    process.exit(0);
-  });
-});
+async function shutdown(signal) {
+  log("info", `${signal} received. Shutting down gracefully.`);
 
-process.on("SIGINT", () => {
-  log("info", "SIGINT received. Shutting down gracefully.");
-  server.close(() => {
-    log("info", "Server closed.");
-    process.exit(0);
+  server.close(async () => {
+    try {
+      await closeDatabase();
+      log("info", "Database pool closed.");
+      log("info", "Server closed.");
+      process.exit(0);
+    } catch (error) {
+      log("error", "Error during shutdown", {
+        errorMessage: error.message,
+      });
+      process.exit(1);
+    }
   });
-});
+}
+
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));

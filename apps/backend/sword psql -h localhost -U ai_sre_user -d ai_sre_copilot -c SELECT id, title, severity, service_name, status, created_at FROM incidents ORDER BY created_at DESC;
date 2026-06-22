@@ -1,0 +1,5 @@
+                  id                  |            title            | severity | service_name | status |          created_at           
+--------------------------------------+-----------------------------+----------+--------------+--------+-------------------------------
+ 09048d11-7e83-42c1-bdeb-34ca6bed688d | Database connectivity added | medium   | backend-api  | open   | 2026-06-22 09:05:59.253181+00
+(1 row)
+
