@@ -83,6 +83,36 @@ pipeline {
                 sh 'docker image ls | grep ai-sre || true'
             }
         }
+
+        stage('Trivy Scan Backend Image') {
+            steps {
+                sh '''
+                    docker run --rm \
+                      -v /var/run/docker.sock:/var/run/docker.sock \
+                      -v trivy_cache:/root/.cache/ \
+                      aquasec/trivy:latest image \
+                      --scanners vuln \
+                      --severity HIGH,CRITICAL \
+                      --exit-code 0 \
+                      ${BACKEND_IMAGE}:${IMAGE_TAG}
+                '''
+            }
+        }
+
+        stage('Trivy Scan Frontend Image') {
+            steps {
+                sh '''
+                    docker run --rm \
+                      -v /var/run/docker.sock:/var/run/docker.sock \
+                      -v trivy_cache:/root/.cache/ \
+                      aquasec/trivy:latest image \
+                      --scanners vuln \
+                      --severity HIGH,CRITICAL \
+                      --exit-code 0 \
+                      ${FRONTEND_IMAGE}:${IMAGE_TAG}
+                '''
+            }
+        }
     }
 
     post {
