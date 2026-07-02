@@ -13,3 +13,4 @@ __pycache__/
 *.tfstate.*
 *.pem
 *.key
+reports/
