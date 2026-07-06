@@ -14,3 +14,4 @@ __pycache__/
 *.pem
 *.key
 reports/
+infra/ansible/inventory/hosts.ini

@@ -1,0 +1,51 @@
+---
+- name: Verify AI SRE Copilot EC2 server
+  hosts: app
+  become: true
+
+  tasks:
+    - name: Show current user
+      command: whoami
+      register: current_user
+      changed_when: false
+
+    - name: Print current user
+      debug:
+        var: current_user.stdout
+
+    - name: Show OS release
+      command: cat /etc/os-release
+      register: os_release
+      changed_when: false
+
+    - name: Print OS release
+      debug:
+        var: os_release.stdout_lines
+
+    - name: Check Docker version
+      command: docker --version
+      register: docker_version
+      changed_when: false
+
+    - name: Print Docker version
+      debug:
+        var: docker_version.stdout
+
+    - name: Check Docker Compose version
+      command: docker compose version
+      register: compose_version
+      changed_when: false
+
+    - name: Print Docker Compose version
+      debug:
+        var: compose_version.stdout
+
+    - name: Ensure Docker service is started and enabled
+      systemd:
+        name: docker
+        state: started
+        enabled: true
+
+    - name: Print Docker service result
+      debug:
+        msg: "Docker service is enabled and running."
