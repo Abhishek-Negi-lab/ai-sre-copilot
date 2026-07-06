@@ -1,0 +1,71 @@
+---
+- name: Install and verify Docker Engine on EC2
+  hosts: app
+  become: true
+
+  vars:
+    docker_user: ubuntu
+    docker_packages:
+      - docker.io
+      - docker-compose-v2
+
+  tasks:
+    - name: Update apt cache
+      apt:
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Install required base packages
+      apt:
+        name:
+          - ca-certificates
+          - curl
+          - gnupg
+          - lsb-release
+          - git
+          - unzip
+        state: present
+
+    - name: Install Docker packages
+      apt:
+        name: "{{ docker_packages }}"
+        state: present
+
+    - name: Ensure Docker service is enabled and running
+      systemd:
+        name: docker
+        enabled: true
+        state: started
+
+    - name: Add ubuntu user to docker group
+      user:
+        name: "{{ docker_user }}"
+        groups: docker
+        append: true
+
+    - name: Check Docker version
+      command: docker --version
+      register: docker_version
+      changed_when: false
+
+    - name: Print Docker version
+      debug:
+        var: docker_version.stdout
+
+    - name: Check Docker Compose version
+      command: docker compose version
+      register: docker_compose_version
+      changed_when: false
+
+    - name: Print Docker Compose version
+      debug:
+        var: docker_compose_version.stdout
+
+    - name: Run hello-world container
+      command: docker run --rm hello-world
+      register: hello_world
+      changed_when: false
+
+    - name: Print hello-world output first lines
+      debug:
+        msg: "{{ hello_world.stdout_lines[:5] }}"
