@@ -1,0 +1,126 @@
+---
+- name: Deploy AI SRE Copilot on EC2 using Docker Compose
+  hosts: app
+  become: false
+
+  vars:
+    repo_url: "https://github.com/Abhishek-Negi-lab/ai-sre-copilot.git"
+    app_dir: "/home/ubuntu/ai-sre-copilot"
+    branch: "main"
+
+  tasks:
+    - name: Ensure git is available
+      command: git --version
+      register: git_version
+      changed_when: false
+
+    - name: Print git version
+      debug:
+        var: git_version.stdout
+
+    - name: Clone or update AI SRE Copilot repository
+      git:
+        repo: "{{ repo_url }}"
+        dest: "{{ app_dir }}"
+        version: "{{ branch }}"
+        force: true
+        update: true
+
+    - name: Get EC2 public IP
+      command: curl -s http://checkip.amazonaws.com
+      register: ec2_public_ip
+      changed_when: false
+
+    - name: Set frontend API URL
+      set_fact:
+        frontend_api_url: "http://{{ ec2_public_ip.stdout | trim }}:5000"
+
+    - name: Print frontend API URL
+      debug:
+        msg: "Frontend will use API URL: {{ frontend_api_url }}"
+
+    - name: Validate Docker Compose configuration
+      command: docker compose config
+      args:
+        chdir: "{{ app_dir }}"
+      environment:
+        VITE_API_BASE_URL: "{{ frontend_api_url }}"
+      changed_when: false
+
+    - name: Deploy application using Docker Compose
+      command: docker compose up --build -d
+      args:
+        chdir: "{{ app_dir }}"
+      environment:
+        VITE_API_BASE_URL: "{{ frontend_api_url }}"
+      register: compose_up
+
+    - name: Print Docker Compose deployment output
+      debug:
+        var: compose_up.stdout_lines
+
+    - name: Wait for backend port 5000
+      wait_for:
+        host: "127.0.0.1"
+        port: 5000
+        timeout: 120
+
+    - name: Wait for frontend port 8080
+      wait_for:
+        host: "127.0.0.1"
+        port: 8080
+        timeout: 120
+
+    - name: Check Docker Compose services
+      command: docker compose ps
+      args:
+        chdir: "{{ app_dir }}"
+      register: compose_ps
+      changed_when: false
+
+    - name: Print Docker Compose services
+      debug:
+        var: compose_ps.stdout_lines
+
+    - name: Check backend health endpoint
+      uri:
+        url: "http://localhost:5000/health"
+        method: GET
+        status_code: 200
+        return_content: true
+      register: backend_health
+
+    - name: Print backend health
+      debug:
+        var: backend_health.json
+
+    - name: Check backend readiness endpoint
+      uri:
+        url: "http://localhost:5000/ready"
+        method: GET
+        status_code: 200
+        return_content: true
+      register: backend_ready
+
+    - name: Print backend readiness
+      debug:
+        var: backend_ready.json
+
+    - name: Check frontend health endpoint
+      uri:
+        url: "http://localhost:8080/health"
+        method: GET
+        status_code: 200
+        return_content: true
+      register: frontend_health
+
+    - name: Print frontend health
+      debug:
+        var: frontend_health.content
+
+    - name: Print deployment URLs
+      debug:
+        msg:
+          - "Frontend URL: http://{{ ec2_public_ip.stdout | trim }}:8080"
+          - "Backend health URL: http://{{ ec2_public_ip.stdout | trim }}:5000/health"
+          - "Backend ready URL: http://{{ ec2_public_ip.stdout | trim }}:5000/ready"
