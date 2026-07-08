@@ -15,3 +15,5 @@ __pycache__/
 *.key
 reports/
 infra/ansible/inventory/hosts.ini
+*.tfvars
+crash.log
