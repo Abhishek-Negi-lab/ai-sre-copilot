@@ -15,3 +15,13 @@ variable "environment" {
   type        = string
   default     = "dev"
 }
+
+variable "allowed_ssh_cidr" {
+  description = "CIDR allowed to SSH into EC2"
+  type        = string
+}
+
+variable "allowed_app_cidr" {
+  description = "CIDR allowed to access app ports"
+  type        = string
+}
