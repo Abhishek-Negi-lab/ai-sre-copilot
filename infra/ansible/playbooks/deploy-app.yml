@@ -40,6 +40,7 @@
         msg: "Frontend will use API URL: {{ frontend_api_url }}"
 
     - name: Validate Docker Compose configuration
+      become: true
       command: docker compose config
       args:
         chdir: "{{ app_dir }}"
@@ -48,6 +49,7 @@
       changed_when: false
 
     - name: Deploy application using Docker Compose
+      become: true
       command: docker compose up --build -d
       args:
         chdir: "{{ app_dir }}"
@@ -72,6 +74,7 @@
         timeout: 120
 
     - name: Check Docker Compose services
+      become: true
       command: docker compose ps
       args:
         chdir: "{{ app_dir }}"
