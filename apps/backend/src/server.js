@@ -4,6 +4,7 @@ const dotenv = require("dotenv");
 const crypto = require("crypto");
 const { query, checkDatabase, closeDatabase } = require("./db");
 const { analyzeIncident } = require("./aiAnalyzer");
+const { metricsMiddleware, metricsHandler } = require("./metrics");
 
 dotenv.config({ quiet: true });
 
@@ -16,6 +17,7 @@ const NODE_ENV = process.env.NODE_ENV || "development";
 
 app.use(cors());
 app.use(express.json());
+app.use(metricsMiddleware);
 
 function log(level, message, meta = {}) {
   const logEntry = {
@@ -115,6 +117,8 @@ app.get("/ready", async (req, res) => {
     });
   }
 });
+
+app.get("/metrics", metricsHandler);
 
 app.get("/version", (req, res) => {
   res.json({
