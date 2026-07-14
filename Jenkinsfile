@@ -5,6 +5,7 @@ pipeline {
         BACKEND_IMAGE = "ai-sre-backend"
         FRONTEND_IMAGE = "ai-sre-frontend"
         IMAGE_TAG = "${BUILD_NUMBER}"
+        EC2_PUBLIC_IP = "35.154.130.113"
     }
 
     stages {
@@ -23,8 +24,10 @@ pipeline {
                 sh 'npm -v'
                 sh 'docker --version'
                 sh 'docker compose version'
+                sh 'ansible --version'
                 sh 'echo "Build number: ${BUILD_NUMBER}"'
                 sh 'echo "Image tag: ${IMAGE_TAG}"'
+                sh 'echo "Deploy target EC2: ${EC2_PUBLIC_IP}"'
             }
         }
 
@@ -74,7 +77,7 @@ pipeline {
 
         stage('Docker Build Frontend') {
             steps {
-                sh 'docker build -t ${FRONTEND_IMAGE}:${IMAGE_TAG} --build-arg VITE_API_BASE_URL=http://localhost:5000 ./apps/frontend'
+                sh 'docker build -t ${FRONTEND_IMAGE}:${IMAGE_TAG} --build-arg VITE_API_BASE_URL=http://${EC2_PUBLIC_IP}:5000 ./apps/frontend'
             }
         }
 
@@ -113,19 +116,13 @@ pipeline {
                 '''
             }
         }
-    }
 
-    post {
-        success {
-            echo 'CI pipeline completed successfully.'
-        }
+        stage('Deploy to EC2 with Ansible') {
+            steps {
+                sshagent(credentials: ['ai-sre-ec2-ssh-key']) {
+                    sh '''
+                        mkdir -p infra/ansible/inventory
 
-        failure {
-            echo 'CI pipeline failed. Check the failed stage and console logs.'
-        }
-
-        always {
-            echo 'CI pipeline finished.'
-        }
-    }
-}
+                        cat > infra/ansible/inventory/hosts.ini <<EOF
+[app]
+ai-sre-ec2 ansible_host=${EC2_PUBLIC_IP} ansible_user=ubuntu ansible_python_interpreter=/usr/bin/python3
